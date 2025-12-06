@@ -10,14 +10,12 @@ import (
 	"strings"
 	"time"
 	"tr369-wss-client/client/model"
-	"tr369-wss-client/client/repository"
-	"tr369-wss-client/common"
+	"tr369-wss-client/utils"
 
 	"google.golang.org/protobuf/proto"
 	"nhooyr.io/websocket"
 
 	"tr369-wss-client/config"
-	"tr369-wss-client/datamodel"
 	"tr369-wss-client/pkg/api"
 )
 
@@ -30,25 +28,26 @@ func contains(s, substr string) bool {
 type WSClient struct {
 	model.WSClient   // 嵌入接口以确保实现所有方法
 	config           *config.Config
-	dataModel        *datamodel.TR181DataModel
 	conn             *websocket.Conn // nhooyr.io/websocket 已迁移至 github.com/coder/websocket，但类型名保持不变
 	ctx              context.Context
 	cancel           context.CancelFunc
 	connected        bool
 	pingTicker       *time.Ticker
-	clientRepository *repository.ClientRepository
+	clientRepository model.ClientRepository
 }
 
 // NewWSClient creates a new WebSocket client instance
-func NewWSClient(cfg *config.Config, model *datamodel.TR181DataModel) *WSClient {
+func NewWSClient(
+	cfg *config.Config,
+	clientRepository model.ClientRepository,
+) *WSClient {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &WSClient{
 		config:           cfg,
-		dataModel:        model,
 		ctx:              ctx,
 		cancel:           cancel,
 		connected:        false,
-		clientRepository: repository.NewClientRepository("datamodel/default_tr181_nodes.json"),
+		clientRepository: clientRepository,
 	}
 }
 
@@ -65,8 +64,6 @@ func (c *WSClient) Connect() error {
 	// 设置TR369协议必需的HTTP头
 	headers := http.Header{}
 	options.HTTPHeader = headers
-
-	// 根据要求，需要将eid添加为apiL查询参数，格式为 ?eid=deviceid
 
 	connectUrl := c.config.ServerURL
 
@@ -207,9 +204,7 @@ func (c *WSClient) handleProtobufMessage(msg *api.Msg) {
 
 func (c *WSClient) HandleGetRequest(inComingMsg *api.Msg) {
 	getNodePaths := inComingMsg.GetBody().GetRequest().GetGet().GetParamPaths()
-
-	msg := c.createGetResponseMessage(getNodePaths)
-	msg.Header.MsgId = inComingMsg.Header.MsgId
+	msg := c.createGetResponseMessage(inComingMsg.Header.MsgId, getNodePaths)
 	slog.Debug("sent get resp message", "msg", msg)
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
@@ -217,21 +212,9 @@ func (c *WSClient) HandleGetRequest(inComingMsg *api.Msg) {
 	}
 }
 
-func (c *WSClient) createGetResponseMessage(getNodePaths []string) (result *api.Msg) {
+func (c *WSClient) createGetResponseMessage(msgId string, getNodePaths []string) (result *api.Msg) {
 	resp := c.clientRepository.ConstructGetResp(getNodePaths)
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_GET_RESP,
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Response{
-				Response: &api.Response{
-					RespType: &resp,
-				},
-			},
-		},
-	}
-	return
+	return utils.CreateGetResponseMessage(msgId, resp)
 }
 
 func (c *WSClient) HandleSetRequest(inComingMsg *api.Msg) {
@@ -242,7 +225,7 @@ func (c *WSClient) HandleSetRequest(inComingMsg *api.Msg) {
 	var updatedParams []map[string]string
 	paramSettings := make(map[string]string)
 
-	slog.Debug("get set req from tauc", "req", getUpdateObjs)
+	slog.Debug("get set req from server", "req", getUpdateObjs)
 
 	for _, UpdateObj := range getUpdateObjs {
 		path := UpdateObj.GetObjPath()
@@ -251,7 +234,7 @@ func (c *WSClient) HandleSetRequest(inComingMsg *api.Msg) {
 			continue
 		}
 		requestPath = append(requestPath, path)
-		affectedPath = append(affectedPath, tpath)
+		affectedPath = append(affectedPath, nodePath)
 		for _, paramSetting := range UpdateObj.GetParamSettings() {
 			setKey := paramSetting.GetParam()
 			setValue := paramSetting.GetValue()
@@ -263,53 +246,13 @@ func (c *WSClient) HandleSetRequest(inComingMsg *api.Msg) {
 
 	//c.repo.SaveData(dataMap)
 
-	msg := c.createSetResponseMessage(requestPath, affectedPath, updatedParams)
-	msg.Header.MsgId = inComingMsg.Header.MsgId
+	msg := utils.CreateSetResponseMessage(inComingMsg.Header.MsgId, requestPath, affectedPath, updatedParams)
 	slog.Debug("sent set resp message")
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
 		slog.Warn("HandleSetRequest", "error", err)
 	}
 
-}
-
-func (c *WSClient) createSetResponseMessage(requestPath []string, affectedPath []string, updatedParams []map[string]string) (result *api.Msg) {
-	var updatedObjResults []*api.SetResp_UpdatedObjectResult
-	for k, path := range requestPath {
-		updatedObjResult := &api.SetResp_UpdatedObjectResult{
-			RequestedPath: path,
-			OperStatus: &api.SetResp_UpdatedObjectResult_OperationStatus{
-				OperStatus: &api.SetResp_UpdatedObjectResult_OperationStatus_OperSuccess{
-					OperSuccess: &api.SetResp_UpdatedObjectResult_OperationStatus_OperationSuccess{
-						UpdatedInstResults: []*api.SetResp_UpdatedInstanceResult{
-							{
-								AffectedPath:  affectedPath[k],
-								UpdatedParams: updatedParams[k],
-							},
-						},
-					},
-				},
-			},
-		}
-		updatedObjResults = append(updatedObjResults, updatedObjResult)
-	}
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_SET_RESP,
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Response{
-				Response: &api.Response{
-					RespType: &api.Response_SetResp{
-						SetResp: &api.SetResp{
-							UpdatedObjResults: updatedObjResults,
-						},
-					},
-				},
-			},
-		},
-	}
-	return
 }
 
 func (c *WSClient) HandleAddRequest(inComingMsg *api.Msg) {
@@ -337,49 +280,12 @@ func (c *WSClient) HandleAddRequest(inComingMsg *api.Msg) {
 	}
 
 	//c.repo.SaveData(dataMap)
-	msg := c.createAddResponseMessage(requestPath, affectedPath, updatedParams)
-	msg.Header.MsgId = inComingMsg.Header.MsgId
+	msg := utils.CreateAddResponseMessage(inComingMsg.Header.MsgId, requestPath, affectedPath, updatedParams)
 	slog.Debug("sent add resp message")
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
 		slog.Warn("HandleAddRequest error:", "error", err)
 	}
-}
-
-func (c *WSClient) createAddResponseMessage(requestPath []string, affectedPath []string, updatedParams []map[string]string) (result *api.Msg) {
-	var createdObjResults []*api.AddResp_CreatedObjectResult
-	for k, path := range requestPath {
-		createdObjResult := &api.AddResp_CreatedObjectResult{
-			RequestedPath: path,
-			OperStatus: &api.AddResp_CreatedObjectResult_OperationStatus{
-				OperStatus: &api.AddResp_CreatedObjectResult_OperationStatus_OperSuccess{
-					OperSuccess: &api.AddResp_CreatedObjectResult_OperationStatus_OperationSuccess{
-						InstantiatedPath: affectedPath[k],
-						UniqueKeys:       updatedParams[k],
-					},
-				},
-			},
-		}
-		createdObjResults = append(createdObjResults, createdObjResult)
-	}
-
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_ADD_RESP,
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Response{
-				Response: &api.Response{
-					RespType: &api.Response_AddResp{
-						AddResp: &api.AddResp{
-							CreatedObjResults: createdObjResults,
-						},
-					},
-				},
-			},
-		},
-	}
-	return
 }
 
 func (c *WSClient) HandleDeleteRequest(inComingMsg *api.Msg) {
@@ -398,48 +304,12 @@ func (c *WSClient) HandleDeleteRequest(inComingMsg *api.Msg) {
 
 	}
 	//c.repo.SaveData(dataMap)
-	msg := c.createDeleteResponseMessage(requestPath, affectedPath)
-	msg.Header.MsgId = inComingMsg.Header.MsgId
+	msg := utils.CreateDeleteResponseMessage(inComingMsg.Header.MsgId, requestPath, affectedPath)
 	slog.Debug("sent delete resp message")
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
 		slog.Warn("HandleDeleteRequest error:", "error", err)
 	}
-}
-
-func (c *WSClient) createDeleteResponseMessage(requestPath []string, affectedPath []string) (result *api.Msg) {
-	var deletedObjResults []*api.DeleteResp_DeletedObjectResult
-	for k, path := range requestPath {
-		deletedObjResult := &api.DeleteResp_DeletedObjectResult{
-			RequestedPath: path,
-			OperStatus: &api.DeleteResp_DeletedObjectResult_OperationStatus{
-				OperStatus: &api.DeleteResp_DeletedObjectResult_OperationStatus_OperSuccess{
-					OperSuccess: &api.DeleteResp_DeletedObjectResult_OperationStatus_OperationSuccess{
-						AffectedPaths: []string{affectedPath[k]},
-					},
-				},
-			},
-		}
-		deletedObjResults = append(deletedObjResults, deletedObjResult)
-	}
-
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_DELETE_RESP,
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Response{
-				Response: &api.Response{
-					RespType: &api.Response_DeleteResp{
-						DeleteResp: &api.DeleteResp{
-							DeletedObjResults: deletedObjResults,
-						},
-					},
-				},
-			},
-		},
-	}
-	return
 }
 
 func (c *WSClient) HandleOperateRequest(inComingMsg *api.Msg) {
@@ -449,8 +319,7 @@ func (c *WSClient) HandleOperateRequest(inComingMsg *api.Msg) {
 
 	command := operate.GetCommand()
 
-	msg := c.createOperateResponseMessage(command)
-	msg.Header.MsgId = inComingMsg.Header.MsgId
+	msg := utils.CreateOperateResponseMessage(inComingMsg.Header.MsgId, command)
 	slog.Debug("sent operate resp message")
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
@@ -458,84 +327,19 @@ func (c *WSClient) HandleOperateRequest(inComingMsg *api.Msg) {
 	}
 }
 
-func (c *WSClient) createOperateResponseMessage(command string) (result *api.Msg) {
-	var operationResults []*api.OperateResp_OperationResult
-
-	operationResult := &api.OperateResp_OperationResult{
-		ExecutedCommand: command,
-		OperationResp: &api.OperateResp_OperationResult_ReqObjPath{
-			ReqObjPath: "Device.LocalAgent.Request.1",
-		},
-	}
-	operationResults = append(operationResults, operationResult)
-
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_OPERATE_RESP,
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Response{
-				Response: &api.Response{
-					RespType: &api.Response_OperateResp{
-						OperateResp: &api.OperateResp{
-							OperationResults: operationResults,
-						},
-					},
-				},
-			},
-		},
-	}
-	return
-}
-
 func (c *WSClient) SendOperateCompleteNotify(objPath string, commandName string, commandKey string, outputArgs map[string]string) {
 
-	completeNotify := &api.Notify{
-		SubscriptionId: "/tpuc/tr369controller",
-		SendResp:       false,
-		Notification: &api.Notify_OperComplete{
-			OperComplete: &api.Notify_OperationComplete{
-				ObjPath:     objPath,
-				CommandName: commandName,
-				CommandKey:  commandKey,
-				OperationResp: &api.Notify_OperationComplete_ReqOutputArgs{
-					ReqOutputArgs: &api.Notify_OperationComplete_OutputArgs{
-						OutputArgs: outputArgs,
-					},
-				},
-			},
-		},
-	}
-	msg := c.createNotifyMessage(completeNotify)
+	msg := utils.CreateOperateCompleteMessage(objPath, commandName, commandKey, outputArgs)
 	err := c.HandleMTPMsgTransmit(msg)
 	if err != nil {
 		slog.Warn("SendOperateCompleteNotify ", "error", err)
 	}
 }
 
-func (c *WSClient) createNotifyMessage(notify *api.Notify) (result *api.Msg) {
-	result = &api.Msg{
-		Header: &api.Header{
-			MsgType: api.Header_NOTIFY,
-			MsgId:   common.RandStr(10),
-		},
-		Body: &api.Body{
-			MsgBody: &api.Body_Request{
-				Request: &api.Request{
-					ReqType: &api.Request_Notify{
-						Notify: notify,
-					},
-				},
-			},
-		},
-	}
-	return
-}
-
 func (c *WSClient) HandleMTPMsgTransmit(msg *api.Msg) error {
 
-	rec := c.createUspRecordNoSession("1.0", c.config.EndpointId, c.config.ControllerIdentifier, msg)
-	payload := c.encodeUspRecord(rec)
+	rec := utils.CreateUspRecordNoSession("1.0", c.config.EndpointId, c.config.ControllerIdentifier, msg)
+	payload, _ := utils.EncodeUspRecord(rec)
 	c.sendResponse(payload)
 	return nil
 }
@@ -549,29 +353,4 @@ func (c *WSClient) sendResponse(payload []byte) {
 	if err := c.conn.Write(ctx, websocket.MessageBinary, payload); err != nil {
 		log.Printf("Failed to send response: %v", err)
 	}
-}
-
-func (c *WSClient) encodeUspRecord(rec *api.Record) []byte {
-	result, _ := proto.Marshal(rec)
-	return result
-}
-
-func (c *WSClient) encodeUspMessage(msg *api.Msg) []byte {
-	result, _ := proto.Marshal(msg)
-	return result
-}
-
-func (c *WSClient) createUspRecordNoSession(ver, to, from string, um *api.Msg) (result *api.Record) {
-	result = &api.Record{
-		Version: ver,
-		ToId:    to,
-		FromId:  from,
-		RecordType: &api.Record_NoSessionContext{
-			NoSessionContext: &api.NoSessionContextRecord{
-				Payload: c.encodeUspMessage(um),
-			},
-		},
-	}
-
-	return
 }

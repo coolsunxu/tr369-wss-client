@@ -64,4 +64,8 @@ type ClientRepository interface {
 
 	// HandleDeleteRequest handles a DELETE request by removing data
 	HandleDeleteRequest(path string) (nodePath string, isFound bool)
+
+	SaveData()
+
+	StartClientRepository()
 }

@@ -1,50 +1,90 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"tr369-wss-client/client/repository"
+	logger "tr369-wss-client/log"
+	"tr369-wss-client/utils"
 
 	"tr369-wss-client/client"
 	"tr369-wss-client/config"
-	"tr369-wss-client/datamodel"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
+var rootCmd = &cobra.Command{
+	Use:   "websocket client",
+	Short: "wsClient",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// 初始化日志
+		logger.InitLogger()
+
+		//  初始化配置
+		err := config.InitConfig("./configs/config.json")
+		if err != nil {
+			logger.Fatal(err)
+			return
+		}
+
+		logger.Infof("configs.InitConfig %v", utils.SafeMarshal(config.GlobalConfig))
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		startClient()
+	},
+}
+
+func init() {
+	// 在命令的 Flag 中定义参数
+	rootCmd.Flags().StringP("websocket-server-port", "p", "8081", "websocket server port")
+	rootCmd.Flags().BoolP("use-tls", "t", false, "use tls or not")
+	rootCmd.Flags().StringP("controllerId", "c", "usp-controller-ws", "controllerId")
+	rootCmd.Flags().StringP("controllerPath", "a", "/usp", "controllerPath")
+
+	// Viper 绑定到具体的命令 Flag
+	err := viper.BindPFlag("wsPort", rootCmd.Flags().Lookup("websocket-server-port"))
+	if err != nil {
+		return
+	}
+	err = viper.BindPFlag("wsTlsConfig.useTls", rootCmd.Flags().Lookup("use-tls"))
+	if err != nil {
+		return
+	}
+	err = viper.BindPFlag("controllerId", rootCmd.Flags().Lookup("controllerId"))
+	if err != nil {
+		return
+	}
+
+	err = viper.BindPFlag("controllerPath", rootCmd.Flags().Lookup("controllerPath"))
+	if err != nil {
+		return
+	}
+}
+
 func main() {
-	// 解析命令行参数
-	configFile := flag.String("config", "", "Path to configuration file")
-	debug := flag.Bool("debug", true, "Enable debug mode")
-	flag.Parse()
-
-	// 设置日志格式
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
-	// 加载配置
-	var cfg *config.Config
-	if *configFile != "" {
-		// 从指定文件加载配置
-		cfg = loadConfigFromFile(*configFile)
-	} else {
-		// 使用默认配置路径
-		cfg = config.LoadConfig()
+	err := rootCmd.Execute()
+	if err != nil {
+		return
 	}
+}
 
-	// 打印配置信息
-	if *debug {
-		log.Printf("Configuration: %v", cfg)
-	}
+func startClient() {
 
-	// 初始化数据模型
-	model := datamodel.NewTR181DataModel()
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// 初始化数据操作
+	clientRepository := repository.NewClientRepository(config.GlobalConfig, ctx, cancel)
+	clientRepository.StartClientRepository()
 
 	// 创建WebSocket客户端
-	wsClient := client.NewWSClient(cfg, model)
+	wsClient := client.NewWSClient(config.GlobalConfig, clientRepository)
 
 	// 连接到服务器
-	log.Printf("Connecting to TR369 server at %s...", cfg.ServerURL)
+	log.Printf("Connecting to TR369 server at %s...", config.GlobalConfig.ServerURL)
 	if err := wsClient.Connect(); err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
@@ -63,24 +103,4 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down...")
-}
-
-// loadConfigFromFile 从指定文件加载配置
-func loadConfigFromFile(filePath string) *config.Config {
-	// 读取文件内容
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatalf("Failed to read config file: %v", err)
-	}
-
-	// 使用默认配置作为基础
-	cfg := config.DefaultConfig()
-
-	// 解析JSON配置
-	if err := json.Unmarshal(content, cfg); err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
-	}
-
-	log.Printf("Configuration loaded from %s", filePath)
-	return cfg
 }

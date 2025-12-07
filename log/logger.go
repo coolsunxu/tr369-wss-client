@@ -2,15 +2,42 @@ package logger
 
 import (
 	"context"
+	"os"
+	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var logger *zap.SugaredLogger // 包级全局
 
 // InitLogger 初始化
 func InitLogger() {
-	log, _ := zap.NewProduction()
+	encoderCfg := zapcore.EncoderConfig{
+		TimeKey:       "ts",
+		LevelKey:      "level",
+		NameKey:       "logger",
+		CallerKey:     "caller",
+		FunctionKey:   zapcore.OmitKey,
+		MessageKey:    "msg",
+		StacktraceKey: "stacktrace",
+		LineEnding:    zapcore.DefaultLineEnding,
+		EncodeLevel:   zapcore.LowercaseLevelEncoder,
+		EncodeCaller:  zapcore.ShortCallerEncoder,
+
+		// 1. 时间格式化成 “2006-01-02 15:04:05”
+		EncodeTime: func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+			enc.AppendString(t.Format("2006-01-02 15:04:05"))
+		},
+	}
+
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderCfg), // 也可以 NewConsoleEncoder
+		zapcore.AddSync(os.Stdout),
+		zapcore.DebugLevel,
+	)
+
+	log := zap.New(core, zap.AddCaller())
 	logger = log.Sugar()
 }
 

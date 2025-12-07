@@ -1,73 +1,100 @@
 package config
 
 import (
-	"time"
+	"fmt"
 )
 
 // DataRefreshConfig 定义数据刷库的参数
 type DataRefreshConfig struct {
 	// 刷新间隔时间，单位为秒
-	IntervalSeconds int `json:"interval_seconds"`
+	IntervalSeconds int `mapstructure:"interval_seconds"`
 
 	// 写入次数
-	WriteCountThreshold int `json:"write_count_threshold"`
+	WriteCountThreshold int `mapstructure:"write_count_threshold"`
+
+	// tr181节点
+	TR181DataModelPath string `mapstructure:"tr181_data_model_path"`
+}
+
+type WebsocketConfig struct {
+	// 服务器地址
+	ServerURL string `mapstructure:"server_url"`
+
+	// controller Id
+	ControllerId string `mapstructure:"controller_id"`
+
+	// ping 间隔
+	PingInterval int `mapstructure:"ping_interval"`
+
+	// 读取消息大小
+	MaxMessageSize int64 `mapstructure:"max_message_size"`
+
+	// 设备信息
+	EndpointId string `mapstructure:"endpoint_id"`
+
+	// 消息发送通道容量
+	MessageChannelSize int `mapstructure:"message_channel_size"`
 }
 
 // Config represents the client configuration
 type Config struct {
-	// 服务器配置
-	ServerURL string `json:"server_url"`
-
-	// WebSocket配置
-	PingInterval         time.Duration `json:"ping_interval"`
-	ReconnectDelay       time.Duration `json:"reconnect_delay"`
-	MaxReconnectAttempts int           `json:"max_reconnect_attempts"`
-	MaxMessageSize       int64         `json:"max_message_size"`
-
-	// TLS配置
-	TLSEnabled         bool   `json:"tls_enabled"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
-	CACertFile         string `json:"ca_cert_file"`
-	ClientCertFile     string `json:"client_cert_file"`
-	ClientKeyFile      string `json:"client_key_file"`
-
-	// 日志配置
-	LogLevel string `json:"log_level"`
-	LogFile  string `json:"log_file"`
-
-	// 设备信息
-	EndpointId string `json:"endpoint_id"`
-
-	// controller Id
-	ControllerIdentifier string `json:"controller_identifier"`
-
-	// tr181节点
-	TR181DataModelPath string `json:"tr181_data_model_path"`
-
-	DataRefreshConfig *DataRefreshConfig `json:"data_refresh_config"`
+	DataRefreshConfig *DataRefreshConfig `mapstructure:"data_refresh_config"`
+	WebsocketConfig   *WebsocketConfig   `mapstructure:"websocket_config"`
 }
 
-// DefaultConfig returns the default configuration
-var GlobalConfig = &Config{
-	// 默认服务器URL
-	ServerURL: "wss://localhost:7547",
+// GlobalConfig returns the default configuration
+var GlobalConfig = Config{
+	DataRefreshConfig: &DataRefreshConfig{},
+	WebsocketConfig:   &WebsocketConfig{},
+}
 
-	// 默认WebSocket设置
-	PingInterval:         30 * time.Second,
-	ReconnectDelay:       5 * time.Second,
-	MaxReconnectAttempts: 5,
-	MaxMessageSize:       1024 * 1024, // 1MB
+// ValidateConfig validates the configuration
+func ValidateConfig() error {
+	// 验证DataRefreshConfig
+	if GlobalConfig.DataRefreshConfig == nil {
+		return fmt.Errorf("DataRefreshConfig is nil")
+	}
 
-	// 默认TLS设置
-	TLSEnabled:         true,
-	InsecureSkipVerify: false,
-	CACertFile:         "",
-	ClientCertFile:     "",
-	ClientKeyFile:      "",
+	if GlobalConfig.DataRefreshConfig.IntervalSeconds <= 0 {
+		return fmt.Errorf("IntervalSeconds must be positive")
+	}
 
-	// 默认日志设置
-	LogLevel: "info",
-	LogFile:  "",
+	if GlobalConfig.DataRefreshConfig.WriteCountThreshold <= 0 {
+		return fmt.Errorf("WriteCountThreshold must be positive")
+	}
 
-	ControllerIdentifier: "usp-controller-ws",
+	if GlobalConfig.DataRefreshConfig.TR181DataModelPath == "" {
+		return fmt.Errorf("TR181DataModelPath is empty")
+	}
+
+	// 验证WebsocketConfig
+	if GlobalConfig.WebsocketConfig == nil {
+		return fmt.Errorf("WebsocketConfig is nil")
+	}
+
+	if GlobalConfig.WebsocketConfig.ServerURL == "" {
+		return fmt.Errorf("ServerURL is empty")
+	}
+
+	if GlobalConfig.WebsocketConfig.EndpointId == "" {
+		return fmt.Errorf("EndpointId is empty")
+	}
+
+	if GlobalConfig.WebsocketConfig.ControllerId == "" {
+		return fmt.Errorf("ControllerId is empty")
+	}
+
+	if GlobalConfig.WebsocketConfig.PingInterval <= 0 {
+		return fmt.Errorf("PingInterval must be positive")
+	}
+
+	if GlobalConfig.WebsocketConfig.MaxMessageSize <= 0 {
+		return fmt.Errorf("MaxMessageSize must be positive")
+	}
+
+	if GlobalConfig.WebsocketConfig.MessageChannelSize < 0 {
+		return fmt.Errorf("MessageChannelSize must be non-negative")
+	}
+
+	return nil
 }

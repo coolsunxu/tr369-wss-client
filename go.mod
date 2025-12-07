@@ -5,11 +5,11 @@ go 1.23.0
 toolchain go1.24.10
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.uber.org/zap v1.27.1
 	google.golang.org/protobuf v1.36.10
-	nhooyr.io/websocket v1.8.17
 )
 
 require (

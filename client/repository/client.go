@@ -2,18 +2,19 @@ package repository
 
 import (
 	"context"
-	"log"
 	"time"
 	"tr369-wss-client/client/model"
 	"tr369-wss-client/common"
 	"tr369-wss-client/config"
+	logger "tr369-wss-client/log"
 	"tr369-wss-client/pkg/api"
+	tr181Model "tr369-wss-client/tr181/model"
 	"tr369-wss-client/trtree"
 )
 
 type clientRepository struct {
 	Config         *config.Config
-	TR181DataModel *model.TR181DataModel
+	TR181DataModel *tr181Model.TR181DataModel
 	writeCount     int
 	lastWriteTime  int64
 	pingTicker     *time.Ticker
@@ -27,12 +28,12 @@ func NewClientRepository(
 	cancel context.CancelFunc,
 ) model.ClientRepository {
 
-	tr181DataModel := &model.TR181DataModel{
+	tr181DataModel := &tr181Model.TR181DataModel{
 		Parameters: make(map[string]interface{}),
-		Listeners:  make(map[string][]model.ParameterChangeListener),
+		Listeners:  make(map[string][]tr181Model.Listener),
 	}
 
-	pingTicker := time.NewTicker(time.Duration(config.DataRefreshConfig.IntervalSeconds))
+	pingTicker := time.NewTicker(time.Duration(config.DataRefreshConfig.IntervalSeconds) * time.Second)
 
 	return &clientRepository{
 		Config:         config,
@@ -64,15 +65,16 @@ func (repo *clientRepository) DataSynchronizationTick() {
 		case <-repo.pingTicker.C:
 			// 没有数据写入
 			if repo.writeCount == 0 {
-				log.Println("No data change detected, skipping save.")
+				logger.Debugf("No data change detected, skipping save.")
 				continue
 			}
 			// 保存数据
-			common.SaveJsonFile(repo.TR181DataModel.Parameters, repo.Config.TR181DataModelPath)
+			common.SaveJsonFile(repo.TR181DataModel.Parameters, repo.Config.DataRefreshConfig.TR181DataModelPath)
 			// 重置写入计数
 			repo.writeCount = 0
 			// 重置最后写入时间
 			repo.lastWriteTime = time.Now().UnixMilli()
+			logger.Debugf("tick save data synchronized.")
 		case <-repo.ctx.Done():
 			return
 		}
@@ -107,18 +109,42 @@ func (repo *clientRepository) SaveData() {
 
 	// 如果写入次数大于约定的最大次数，开始保存到文件磁盘
 	if repo.writeCount >= repo.Config.DataRefreshConfig.WriteCountThreshold {
-		common.SaveJsonFile(repo.TR181DataModel.Parameters, repo.Config.TR181DataModelPath)
+		common.SaveJsonFile(repo.TR181DataModel.Parameters, repo.Config.DataRefreshConfig.TR181DataModelPath)
 		// 重置写入计数
 		repo.writeCount = 0
 		// 重置最后写入时间
 		repo.lastWriteTime = time.Now().UnixMilli()
+
+		logger.Debugf("normal save data synchronized.")
 	}
 
-	// todo print log
+	logger.Debugf("current write count: %d", repo.writeCount)
 
 }
 
-func loadDefaultTR181Nodes(tr181DataModel *model.TR181DataModel, config *config.Config) {
+func loadDefaultTR181Nodes(tr181DataModel *tr181Model.TR181DataModel, config *config.Config) {
 
-	tr181DataModel.Parameters = common.LoadJsonFile(config.TR181DataModelPath)
+	tr181DataModel.Parameters = common.LoadJsonFile(config.DataRefreshConfig.TR181DataModelPath)
+}
+
+func (repo *clientRepository) AddListener(paramName string, listener tr181Model.Listener) error {
+	repo.TR181DataModel.Listeners[paramName] = append(repo.TR181DataModel.Listeners[paramName], listener)
+	return nil
+}
+
+func (repo *clientRepository) RemoveListener(paramName string) error {
+	delete(repo.TR181DataModel.Listeners, paramName)
+	return nil
+}
+
+// NotifyListeners notifies all listeners of a parameter change
+func (repo *clientRepository) NotifyListeners(paramName string, value interface{}) {
+	listeners, exists := repo.TR181DataModel.Listeners[paramName]
+
+	if exists {
+		for _, listener := range listeners {
+			// 在goroutine中执行监听器，避免阻塞
+			go listener.Listener(listener.SubscriptionId, value)
+		}
+	}
 }

@@ -1,0 +1,15 @@
+{
+  "websocket_config": {
+    "server_url": "ws://localhost:8081/usp",
+    "endpoint_id": "os::BC071D-22524W5000263",
+    "controller_id": "usp-controller-ws",
+    "ping_interval": 60,
+    "max_message_size": 10485760,
+    "message_channel_size": 1024
+  },
+  "data_refresh_config": {
+    "interval_seconds": 60,
+    "write_count_threshold": 4,
+    "tr181_data_model_path": "./data/default.json"
+  }
+}

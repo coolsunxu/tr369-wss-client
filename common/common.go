@@ -7,13 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-	"unsafe"
+
+	logger "tr369-wss-client/log"
 )
 
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -26,27 +26,42 @@ const (
 	letterIdMax  = 63 / letterIdBits
 )
 
-func LoadJsonFile(filePath string) map[string]interface{} {
+func LoadJsonFile(filePath string, args ...interface{}) map[string]interface{} {
 	var result map[string]interface{}
-	for i := 0; i < 3; i++ {
+	maxRetries := 3
+	retryInterval := 1 * time.Second
+
+	// 解析可选参数
+	if len(args) > 0 {
+		if v, ok := args[0].(int); ok {
+			maxRetries = v
+		}
+	}
+	if len(args) > 1 {
+		if v, ok := args[1].(time.Duration); ok {
+			retryInterval = v
+		}
+	}
+
+	for i := 0; i < maxRetries; i++ {
 		file, err := os.Open(filePath)
 		if err != nil {
-			slog.Warn("failed to open json file", "path", filePath, "index", i, "error", err)
-			time.Sleep(1 * time.Second)
+			logger.Warnf("failed to open json file, path: %s, index: %d, error: %v", filePath, i, err)
+			time.Sleep(retryInterval)
 			continue
 		}
 
 		decoder := json.NewDecoder(file)
 		err = decoder.Decode(&result)
 		if err != nil {
-			slog.Warn("failed to decode json data into map", "path", filePath, "index", i, "error", err)
-			time.Sleep(1 * time.Second)
+			logger.Warnf("failed to decode json data into map, path: %s, index: %d, error: %v", filePath, i, err)
+			time.Sleep(retryInterval)
 			continue
 		}
 
 		err = file.Close()
 		if err != nil {
-			slog.Warn("failed to close file", "path", filePath, "index", i, "error", err)
+			logger.Warnf("failed to close file, path: %s, index: %d, error: %v", filePath, i, err)
 		}
 		break
 	}
@@ -59,21 +74,21 @@ func SaveJsonFile(trtree map[string]interface{}, filePath string) {
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			slog.Warn("close file failed", "path", filePath)
+			logger.Warnf("close file failed, path: %s", filePath)
 		}
 	}(file)
 	if e != nil {
-		slog.Warn("failed to open file", "path", filePath)
+		logger.Warnf("failed to open file, path: %s", filePath)
 	} else {
-		slog.Debug("open file succeed", "path", filePath)
+		logger.Debugf("open file succeed, path: %s", filePath)
 	}
 	// 创建编码器
 	encoder := json.NewEncoder(file)
 	err := encoder.Encode(trtree)
 	if err != nil {
-		slog.Warn("encode failed", "path", filePath)
+		logger.Warnf("encode failed, path: %s", filePath)
 	} else {
-		slog.Debug("encode succeed", "path", filePath)
+		logger.Debugf("encode succeed, path: %s", filePath)
 	}
 }
 
@@ -135,5 +150,5 @@ func RandStr(n int) string {
 		cache >>= letterIdBits
 		remain--
 	}
-	return *(*string)(unsafe.Pointer(&b))
+	return string(b)
 }

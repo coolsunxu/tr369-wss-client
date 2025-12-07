@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func DecodeUSPMessage(ctx context.Context, binary []byte) (uspMsg *api.Msg, err error) {
+func DecodeUSPMessage(binary []byte) (uspMsg *api.Msg, err error) {
 	uspMsg = new(api.Msg)
 
 	opts := proto.UnmarshalOptions{
@@ -19,17 +19,17 @@ func DecodeUSPMessage(ctx context.Context, binary []byte) (uspMsg *api.Msg, err 
 
 	err = opts.Unmarshal(binary, uspMsg)
 	if err != nil {
-		logger.Warnf("trace_id %s DecodeUSPMessage failed, err: %s", logger.GetTraceId(ctx), err)
+		logger.Warnf("DecodeUSPMessage failed, err: %s", err)
 		return nil, err
 	}
 	return uspMsg, nil
 }
 
-func DecodeUSPRecord(ctx context.Context, binary []byte) (uspRecord *api.Record, err error) {
+func DecodeUSPRecord(binary []byte) (uspRecord *api.Record, err error) {
 	uspRecord = new(api.Record)
 	err = proto.Unmarshal(binary, uspRecord)
 	if err != nil {
-		logger.Warnf("trace_id %s Unmarshal failed, err: %s", logger.GetTraceId(ctx), err)
+		logger.Warnf("Unmarshal failed, err: %s", err)
 		return nil, err
 	}
 	return uspRecord, nil
@@ -117,6 +117,7 @@ func CreateOperateResponseMessage(msgId string, command string) (result *api.Msg
 	result = &api.Msg{
 		Header: &api.Header{
 			MsgType: api.Header_OPERATE_RESP,
+			MsgId:   msgId,
 		},
 		Body: &api.Body{
 			MsgBody: &api.Body_Response{
@@ -277,7 +278,7 @@ func CreateOperateCompleteMessage(objPath string, commandName string, commandKey
 }
 
 func CreateNotifyMessage(notify *api.Notify) (result *api.Msg) {
-	result = &api.Msg{
+	return &api.Msg{
 		Header: &api.Header{
 			MsgType: api.Header_NOTIFY,
 			MsgId:   common.RandStr(10),
@@ -292,7 +293,6 @@ func CreateNotifyMessage(notify *api.Notify) (result *api.Msg) {
 			},
 		},
 	}
-	return
 }
 
 func CreateGetSupportedProtocolMessage(ctx context.Context, controllerSupported string) (result *api.Msg) {

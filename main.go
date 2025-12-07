@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"tr369-wss-client/client/repository"
+	"tr369-wss-client/client/usecase"
 	logger "tr369-wss-client/log"
 	"tr369-wss-client/utils"
 
@@ -14,7 +14,6 @@ import (
 	"tr369-wss-client/config"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var rootCmd = &cobra.Command{
@@ -25,7 +24,7 @@ var rootCmd = &cobra.Command{
 		logger.InitLogger()
 
 		//  初始化配置
-		err := config.InitConfig("./configs/config.json")
+		err := config.InitConfig("./config/config.json")
 		if err != nil {
 			logger.Fatal(err)
 			return
@@ -39,30 +38,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	// 在命令的 Flag 中定义参数
-	rootCmd.Flags().StringP("websocket-server-port", "p", "8081", "websocket server port")
-	rootCmd.Flags().BoolP("use-tls", "t", false, "use tls or not")
-	rootCmd.Flags().StringP("controllerId", "c", "usp-controller-ws", "controllerId")
-	rootCmd.Flags().StringP("controllerPath", "a", "/usp", "controllerPath")
-
-	// Viper 绑定到具体的命令 Flag
-	err := viper.BindPFlag("wsPort", rootCmd.Flags().Lookup("websocket-server-port"))
-	if err != nil {
-		return
-	}
-	err = viper.BindPFlag("wsTlsConfig.useTls", rootCmd.Flags().Lookup("use-tls"))
-	if err != nil {
-		return
-	}
-	err = viper.BindPFlag("controllerId", rootCmd.Flags().Lookup("controllerId"))
-	if err != nil {
-		return
-	}
-
-	err = viper.BindPFlag("controllerPath", rootCmd.Flags().Lookup("controllerPath"))
-	if err != nil {
-		return
-	}
+	// 暂时不做操作
 }
 
 func main() {
@@ -75,32 +51,37 @@ func main() {
 func startClient() {
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	messageChannel := make(chan []byte, config.GlobalConfig.WebsocketConfig.MessageChannelSize)
+	defer close(messageChannel)
 
 	// 初始化数据操作
-	clientRepository := repository.NewClientRepository(config.GlobalConfig, ctx, cancel)
+	clientRepository := repository.NewClientRepository(&config.GlobalConfig, ctx, cancel)
 	clientRepository.StartClientRepository()
 
+	// 初始化clientUseCase
+	clientUseCase := usecase.NewClientUseCase(ctx, &config.GlobalConfig, clientRepository, messageChannel)
+
 	// 创建WebSocket客户端
-	wsClient := client.NewWSClient(config.GlobalConfig, clientRepository)
+	wsClient := client.NewWSClient(&config.GlobalConfig, clientRepository, clientUseCase, messageChannel)
 
 	// 连接到服务器
-	log.Printf("Connecting to TR369 server at %s...", config.GlobalConfig.ServerURL)
+	logger.Infof("Connecting to TR369 server at %s...", config.GlobalConfig.WebsocketConfig.ServerURL)
 	if err := wsClient.Connect(); err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+		logger.Fatalf("Failed to connect: %v", err)
 	}
 	defer wsClient.Disconnect()
 
-	log.Println("Connected to TR369 server successfully")
+	logger.Infof("Connected to TR369 server successfully")
 
 	// 启动消息处理
 	wsClient.StartMessageHandler()
-
-	log.Println("TR369 client is running. Press Ctrl+C to exit.")
 
 	// 等待中断信号优雅退出
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down...")
+	logger.Infof("Shutting down...")
 }

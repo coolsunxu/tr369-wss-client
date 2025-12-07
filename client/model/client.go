@@ -1,18 +1,9 @@
 package model
 
 import (
-	"sync"
 	"tr369-wss-client/pkg/api"
+	tr181Model "tr369-wss-client/tr181/model"
 )
-
-// ParameterChangeListener defines a callback for parameter changes
-type ParameterChangeListener func(name string, oldValue, newValue interface{})
-
-type TR181DataModel struct {
-	Parameters map[string]interface{}
-	Lock       sync.RWMutex
-	Listeners  map[string][]ParameterChangeListener
-}
 
 // WSClient defines the interface for TR369 WebSocket client
 type WSClient interface {
@@ -24,27 +15,6 @@ type WSClient interface {
 
 	// StartMessageHandler starts the message handling goroutines
 	StartMessageHandler()
-
-	// HandleGetRequest handles incoming GET requests
-	HandleGetRequest(inComingMsg *api.Msg)
-
-	// HandleSetRequest handles incoming SET requests
-	HandleSetRequest(inComingMsg *api.Msg)
-
-	// HandleAddRequest handles incoming ADD requests
-	HandleAddRequest(inComingMsg *api.Msg)
-
-	// HandleDeleteRequest handles incoming DELETE requests
-	HandleDeleteRequest(inComingMsg *api.Msg)
-
-	// HandleOperateRequest handles incoming OPERATE requests
-	HandleOperateRequest(inComingMsg *api.Msg)
-
-	// SendOperateCompleteNotify sends an operation complete notification
-	SendOperateCompleteNotify(objPath string, commandName string, commandKey string, outputArgs map[string]string)
-
-	// HandleMTPMsgTransmit handles MTP message transmission
-	HandleMTPMsgTransmit(msg *api.Msg) error
 }
 
 // ClientRepository defines the interface for client data repository
@@ -68,4 +38,15 @@ type ClientRepository interface {
 	SaveData()
 
 	StartClientRepository()
+
+	AddListener(paramName string, listener tr181Model.Listener) error
+
+	RemoveListener(paramName string) error
+	NotifyListeners(paramName string, value interface{})
+}
+
+// ClientUseCase defines the interface for client use case
+type ClientUseCase interface {
+	// HandleMessage processes incoming USP messages
+	HandleMessage(msg *api.Msg)
 }

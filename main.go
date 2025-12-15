@@ -57,14 +57,15 @@ func startClient() {
 	defer close(messageChannel)
 
 	// 初始化数据操作
-	clientRepository := repository.NewClientRepository(&config.GlobalConfig, ctx, cancel)
-	clientRepository.StartClientRepository()
+	// 返回分别实现 DataRepository 和 ListenerManager 接口的实例
+	dataRepo, listenerMgr := repository.NewRepository(&config.GlobalConfig, ctx, cancel)
+	dataRepo.Start()
 
 	// 初始化clientUseCase
-	clientUseCase := usecase.NewClientUseCase(ctx, &config.GlobalConfig, clientRepository, messageChannel)
+	clientUseCase := usecase.NewClientUseCase(ctx, &config.GlobalConfig, dataRepo, listenerMgr, messageChannel)
 
 	// 创建WebSocket客户端
-	wsClient := client.NewWSClient(&config.GlobalConfig, clientRepository, clientUseCase, messageChannel)
+	wsClient := client.NewWSClient(&config.GlobalConfig, dataRepo, clientUseCase, messageChannel)
 
 	// 连接到服务器
 	logger.Infof("Connecting to TR369 server at %s...", config.GlobalConfig.WebsocketConfig.ServerURL)

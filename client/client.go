@@ -23,7 +23,7 @@ type WSClient struct {
 	cancel               context.CancelFunc
 	connected            bool
 	pingTicker           *time.Ticker
-	clientRepository     model.ClientRepository
+	dataRepo             model.DataRepository
 	clientUseCase        model.ClientUseCase
 	messageChannel       chan []byte   // 消息发送通道
 	reconnectInterval    time.Duration // 重连间隔
@@ -35,20 +35,20 @@ type WSClient struct {
 // NewWSClient creates a new WebSocket client instance
 func NewWSClient(
 	cfg *config.Config,
-	clientRepository model.ClientRepository,
+	dataRepo model.DataRepository,
 	clientUseCase model.ClientUseCase,
 	messageChannel chan []byte,
 ) *WSClient {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &WSClient{
-		config:           cfg,
-		ctx:              ctx,
-		cancel:           cancel,
-		connected:        false,
-		clientRepository: clientRepository,
-		clientUseCase:    clientUseCase,
-		messageChannel:   messageChannel,
+		config:         cfg,
+		ctx:            ctx,
+		cancel:         cancel,
+		connected:      false,
+		dataRepo:       dataRepo,
+		clientUseCase:  clientUseCase,
+		messageChannel: messageChannel,
 	}
 }
 

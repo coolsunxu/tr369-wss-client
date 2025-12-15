@@ -36,16 +36,22 @@ type WebsocketConfig struct {
 	MessageChannelSize int `mapstructure:"message_channel_size"`
 }
 
+type TR369Config struct {
+	Version string `mapstructure:"version"`
+}
+
 // Config represents the client configuration
 type Config struct {
 	DataRefreshConfig *DataRefreshConfig `mapstructure:"data_refresh_config"`
 	WebsocketConfig   *WebsocketConfig   `mapstructure:"websocket_config"`
+	Tr369Config       *TR369Config       `mapstructure:"tr369_config"`
 }
 
 // GlobalConfig returns the default configuration
 var GlobalConfig = Config{
 	DataRefreshConfig: &DataRefreshConfig{},
 	WebsocketConfig:   &WebsocketConfig{},
+	Tr369Config:       &TR369Config{},
 }
 
 // ValidateConfig validates the configuration

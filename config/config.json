@@ -11,5 +11,8 @@
     "interval_seconds": 60,
     "write_count_threshold": 4,
     "tr181_data_model_path": "./data/default.json"
+  },
+  "tr369_config": {
+    "version": "1.0"
   }
 }

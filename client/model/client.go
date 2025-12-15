@@ -5,6 +5,27 @@ import (
 	tr181Model "tr369-wss-client/tr181/model"
 )
 
+// 路径常量定义
+const (
+	PathDevice       = "Device."
+	PathLocalAgent   = "Device.LocalAgent."
+	PathSubscription = "Device.LocalAgent.Subscription."
+)
+
+// ParamSetting 定义参数设置的通用接口
+// 用于统一处理 Set_UpdateParamSetting 和 Add_CreateParamSetting
+type ParamSetting interface {
+	GetParam() string
+	GetValue() string
+}
+
+// SubscriptionParams 订阅参数结构体
+type SubscriptionParams struct {
+	Id            string
+	ReferenceList string
+	NotifType     string
+}
+
 // WSClient defines the interface for TR369 WebSocket client
 type WSClient interface {
 	// Connect establishes a WebSocket connection to the server
@@ -17,31 +38,39 @@ type WSClient interface {
 	StartMessageHandler()
 }
 
-// ClientRepository defines the interface for client data repository
-type ClientRepository interface {
+// DataRepository 定义数据访问接口
+// 负责 TR181 数据模型的纯数据 CRUD 操作
+type DataRepository interface {
+	// GetValue 获取指定路径的值
+	GetValue(path string) (interface{}, error)
 
-	// ConstructGetResp constructs a GET response from data map and paths
-	ConstructGetResp(paths []string) api.Response_GetResp
+	// GetParameters 获取底层参数数据（供 UseCase 构建响应使用）
+	GetParameters() map[string]interface{}
 
-	// HandleSetRequest handles a SET request by updating data map
-	HandleSetRequest(path string, key string, value string)
+	// SetValue 设置指定路径的值
+	// 返回: changed (是否发生变化), oldValue (旧值)
+	SetValue(path string, key string, value string) (changed bool, oldValue string)
 
-	// IsExistPath checks if a path exists in the data map
-	IsExistPath(path string) (isSuccess bool, nodePath string)
+	// DeleteNode 删除指定路径的节点
+	DeleteNode(path string) (nodePath string, isFound bool)
 
-	// GetNewInstance gets a new instance path for a given path
-	GetNewInstance(path string) (nodePath string)
+	// Start 启动数据仓库（初始化和数据同步）
+	Start()
+}
 
-	// HandleDeleteRequest handles a DELETE request by removing data
-	HandleDeleteRequest(path string) (nodePath string, isFound bool)
-
-	SaveData()
-
-	StartClientRepository()
-
+// ListenerManager 定义监听器管理接口
+// 负责事件监听器的管理
+type ListenerManager interface {
+	// AddListener 添加参数变化监听器
 	AddListener(paramName string, listener tr181Model.Listener) error
 
+	// RemoveListener 移除指定参数的监听器
 	RemoveListener(paramName string) error
+
+	// ResetListener 重置所有监听器
+	ResetListener() error
+
+	// NotifyListeners 通知指定参数的所有监听器
 	NotifyListeners(paramName string, value interface{})
 }
 

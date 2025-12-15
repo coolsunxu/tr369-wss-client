@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 	"tr369-wss-client/client/model"
 	"tr369-wss-client/common"
@@ -82,6 +84,17 @@ func (repo *clientRepository) DataSynchronizationTick() {
 
 }
 
+func (repo *clientRepository) GetValueByPath(path string) (interface{}, error) {
+	paths := strings.Split(path, ".")
+	value, _, found := trtree.FindKeyInMap(repo.TR181DataModel.Parameters, paths, "")
+	if !found {
+		return path, fmt.Errorf("path not found: %s", path)
+	}
+
+	return value, nil
+
+}
+
 func (repo *clientRepository) ConstructGetResp(paths []string) api.Response_GetResp {
 	return trtree.ConstructGetResp(repo.TR181DataModel.Parameters, paths)
 }
@@ -137,8 +150,15 @@ func (repo *clientRepository) RemoveListener(paramName string) error {
 	return nil
 }
 
+func (repo *clientRepository) ResetListener() error {
+	// 如果删除所有订阅，采用此方法
+	repo.TR181DataModel.Listeners = make(map[string][]tr181Model.Listener)
+	return nil
+}
+
 // NotifyListeners notifies all listeners of a parameter change
 func (repo *clientRepository) NotifyListeners(paramName string, value interface{}) {
+	// 先进行简单的等值匹配，后续考虑复杂的匹配
 	listeners, exists := repo.TR181DataModel.Listeners[paramName]
 
 	if exists {

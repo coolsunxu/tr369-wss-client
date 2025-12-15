@@ -19,6 +19,7 @@ type WSClient interface {
 
 // ClientRepository defines the interface for client data repository
 type ClientRepository interface {
+	GetValueByPath(path string) (interface{}, error)
 
 	// ConstructGetResp constructs a GET response from data map and paths
 	ConstructGetResp(paths []string) api.Response_GetResp
@@ -42,6 +43,8 @@ type ClientRepository interface {
 	AddListener(paramName string, listener tr181Model.Listener) error
 
 	RemoveListener(paramName string) error
+	ResetListener() error
+
 	NotifyListeners(paramName string, value interface{})
 }
 

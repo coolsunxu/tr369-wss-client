@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"tr369-wss-client/client/model"
 	"tr369-wss-client/config"
 	logger "tr369-wss-client/log"
@@ -171,6 +172,14 @@ func (uc *ClientUseCase) HandleDeleteRequest(inComingMsg *api.Msg) {
 	var requestPath []string
 
 	for _, objPath := range objPaths {
+
+		// 先删除相关Listener,防止节点被删除，导致超时
+		err := uc.HandleDeleteLocalAgentSubscription(objPath)
+		if err != nil {
+			logger.Infof("handleDeleteLocalAgentSubscription error: %v", err)
+			return
+		}
+
 		requestPath = append(requestPath, objPath)
 		nodePath, isFound := uc.ClientRepository.HandleDeleteRequest(objPath)
 		if isFound {
@@ -178,6 +187,14 @@ func (uc *ClientUseCase) HandleDeleteRequest(inComingMsg *api.Msg) {
 		} else {
 			affectedPath = append(affectedPath, objPath)
 		}
+
+		// 判断是否需要发送obj creation
+		notifyDeleteObj := &api.Notify_ObjDeletion{
+			ObjDeletion: &api.Notify_ObjectDeletion{
+				ObjPath: objPath,
+			},
+		}
+		uc.ClientRepository.NotifyListeners(objPath, notifyDeleteObj)
 	}
 
 	uc.ClientRepository.SaveData()
@@ -269,9 +286,31 @@ func (uc *ClientUseCase) HandleDeleteLocalAgentSubscription(requestPath string) 
 		return nil
 	}
 
-	// 如果删除的路径包含整个订阅节点，需要
-	return nil
+	// 判断是否是各级父节点
+	if requestPath == "Device." || requestPath == "Device.LocalAgent." || requestPath == "Device.LocalAgent.Subscription." {
+		// 清除所有订阅
+		logger.Infof("delete device all local agent subscription %s", requestPath)
+		return uc.ClientRepository.ResetListener()
+	}
 
+	// 判断是否符合 Device.LocalAgent.Subscription.*. 格式，*为正整数
+	matched, err := regexp.MatchString(`^Device\.LocalAgent\.Subscription\.([1-9]\d*)\.$`, requestPath)
+	if err != nil {
+		return err
+	}
+
+	if matched {
+		// 符合格式，处理删除逻辑
+		logger.Infof("Handle delete subscription for path: %s", requestPath)
+		pathName, err := uc.ClientRepository.GetValueByPath(requestPath + "ReferenceList")
+		if err != nil {
+			return err
+		}
+		// 这里可以添加实际的删除订阅逻辑，比如调用repository的RemoveListener
+		_ = uc.ClientRepository.RemoveListener(pathName.(string))
+	}
+
+	return nil
 }
 
 // HandleSubscription 处理订阅消息

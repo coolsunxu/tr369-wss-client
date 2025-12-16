@@ -1,0 +1,13 @@
+{
+  "Device": {
+    "DeviceInfo": {
+      "Manufacturer": "TestManufacturer",
+      "ModelName": "TestModel",
+      "SerialNumber": "TEST-001"
+    },
+    "LocalAgent": {
+      "EndpointID": "os::test-device",
+      "Subscription": {}
+    }
+  }
+}

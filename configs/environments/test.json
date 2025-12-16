@@ -1,0 +1,15 @@
+{
+  "data_refresh_config": {
+    "interval_seconds": 5,
+    "write_count_threshold": 1,
+    "tr181_data_model_path": "./test/fixtures/test_tr181_nodes.json"
+  },
+  "websocket_config": {
+    "server_url": "ws://localhost:9999/ws",
+    "controller_id": "self::test-controller",
+    "ping_interval": 5,
+    "max_message_size": 32768,
+    "endpoint_id": "os::test-device",
+    "message_channel_size": 10
+  }
+}

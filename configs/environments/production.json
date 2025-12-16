@@ -1,0 +1,15 @@
+{
+  "data_refresh_config": {
+    "interval_seconds": 300,
+    "write_count_threshold": 50,
+    "tr181_data_model_path": "./data/tr181_nodes.json"
+  },
+  "websocket_config": {
+    "server_url": "wss://production-server:8443/ws",
+    "controller_id": "self::controller",
+    "ping_interval": 60,
+    "max_message_size": 131072,
+    "endpoint_id": "os::device-prod",
+    "message_channel_size": 200
+  }
+}

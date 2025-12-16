@@ -222,6 +222,21 @@ func (uc *ClientUseCase) HandleOperateRequest(inComingMsg *api.Msg) {
 	if err != nil {
 		logger.Warnf("SendOperateCompleteNotify error: %v", err)
 	}
+
+	// 判断是否需要发送operateComplete
+	notifyOperateComplete := &api.Notify_OperComplete{
+		OperComplete: &api.Notify_OperationComplete{
+			ObjPath:     "",
+			CommandKey:  operate.GetCommandKey(),
+			CommandName: operate.GetCommand(),
+			OperationResp: &api.Notify_OperationComplete_ReqOutputArgs{
+				ReqOutputArgs: &api.Notify_OperationComplete_OutputArgs{
+					OutputArgs: map[string]string{},
+				},
+			},
+		},
+	}
+	uc.ClientRepository.NotifyListeners(operate.GetCommand(), notifyOperateComplete)
 }
 
 func (uc *ClientUseCase) HandleNotifyResp(inComingMsg *api.Msg) {
@@ -346,6 +361,23 @@ func (uc *ClientUseCase) HandleSubscription(path string, subscriptionId string, 
 		}
 	case tr181Model.OperationComplete:
 		// 处理操作完成订阅
+		err := uc.ClientRepository.AddListener(path, tr181Model.Listener{
+			SubscriptionId: subscriptionId,
+			Listener:       uc.HandleOperateComplete,
+		})
+		if err != nil {
+			return err
+		}
+
+	case tr181Model.Event:
+		// 处理事件订阅
+		err := uc.ClientRepository.AddListener(path, tr181Model.Listener{
+			SubscriptionId: subscriptionId,
+			Listener:       uc.HandleEvent,
+		})
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown subscription type %s", subscriptionType)
 	}
@@ -434,5 +466,62 @@ func (uc *ClientUseCase) HandleObjectDeletion(subscriptionId string, change inte
 	}
 
 	logger.Infof("client send obj deletion usp msg %s", msg)
+
+}
+
+// HandleOperateComplete 处理 operate complete 事件
+func (uc *ClientUseCase) HandleOperateComplete(subscriptionId string, change interface{}) {
+	operationComplete, ok := change.(*api.Notify_OperComplete)
+
+	// 判断类型
+	if !ok {
+		logger.Infof("Receive message is not Notify_OperationComplete")
+		return
+	}
+
+	// todo 不同的command, 对应的处理逻辑不一样
+	// 构建notify消息
+	notify := &api.Notify{
+		SubscriptionId: subscriptionId,
+		SendResp:       true,
+		Notification:   operationComplete,
+	}
+	msg := utils.CreateNotifyMessage(notify)
+
+	// 发送消息，通过channel
+	err := uc.HandleMTPMsgTransmit(msg)
+	if err != nil {
+		logger.Warnf("SendNotify error: %v", err)
+	}
+
+	logger.Infof("client send operation complete usp msg %s", msg)
+
+}
+
+// HandleEvent 处理 event
+func (uc *ClientUseCase) HandleEvent(subscriptionId string, change interface{}) {
+	event, ok := change.(*api.Notify_Event_)
+
+	// 判断类型
+	if !ok {
+		logger.Infof("Receive message is not Notify_Event_")
+		return
+	}
+
+	// 构建notify消息
+	notify := &api.Notify{
+		SubscriptionId: subscriptionId,
+		SendResp:       true,
+		Notification:   event,
+	}
+	msg := utils.CreateNotifyMessage(notify)
+
+	// 发送消息，通过channel
+	err := uc.HandleMTPMsgTransmit(msg)
+	if err != nil {
+		logger.Warnf("SendNotify error: %v", err)
+	}
+
+	logger.Infof("client send event usp msg %s", msg)
 
 }

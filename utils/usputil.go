@@ -103,16 +103,7 @@ func CreateSetResponseMessage(msgId string, requestPath []string, affectedPath [
 	return
 }
 
-func CreateOperateResponseMessage(msgId string, command string) (result *api.Msg) {
-	var operationResults []*api.OperateResp_OperationResult
-
-	operationResult := &api.OperateResp_OperationResult{
-		ExecutedCommand: command,
-		OperationResp: &api.OperateResp_OperationResult_ReqObjPath{
-			ReqObjPath: "Device.LocalAgent.Request.1",
-		},
-	}
-	operationResults = append(operationResults, operationResult)
+func CreateOperateResponseMessage(msgId string, operationResults []*api.OperateResp_OperationResult) (result *api.Msg) {
 
 	result = &api.Msg{
 		Header: &api.Header{

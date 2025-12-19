@@ -69,6 +69,38 @@ func (uc *ClientUseCase) HandleObjectDeletion(subscriptionId string, change inte
 	uc.sendNotification(subscriptionId, notify, "OBJ_DELETION")
 }
 
+// HandleOperateComplete 处理 operate complete 事件
+func (uc *ClientUseCase) HandleOperateComplete(subscriptionId string, change interface{}) {
+	operComplete, ok := change.(*api.Notify_OperComplete)
+	if !ok {
+		logger.Warnf("[USP] OPER_COMPLETE type assertion error: subscriptionId=%s, err=expected Notify_OperComplete, got %T", subscriptionId, change)
+		return
+	}
+
+	notify := &api.Notify{
+		SubscriptionId: subscriptionId,
+		SendResp:       true,
+		Notification:   operComplete,
+	}
+	uc.sendNotification(subscriptionId, notify, "OPER_COMPLETE")
+}
+
+// HandleEvent 处理 event 事件
+func (uc *ClientUseCase) HandleEvent(subscriptionId string, change interface{}) {
+	event, ok := change.(*api.Notify_Event_)
+	if !ok {
+		logger.Warnf("[USP] EVENT type assertion error: subscriptionId=%s, err=expected Notify_Event_, got %T", subscriptionId, change)
+		return
+	}
+
+	notify := &api.Notify{
+		SubscriptionId: subscriptionId,
+		SendResp:       true,
+		Notification:   event,
+	}
+	uc.sendNotification(subscriptionId, notify, "EVENT")
+}
+
 // notifyValueChange 发送值变化通知
 func (uc *ClientUseCase) notifyValueChange(paramPath string, newValue string) {
 	notifyValueChange := &api.Notify_ValueChange_{
@@ -99,4 +131,36 @@ func (uc *ClientUseCase) notifyObjectDeletion(objPath string) {
 		},
 	}
 	uc.ListenerMgr.NotifyListeners(objPath, notifyDeleteObj)
+}
+
+// notifyOperComplete 发送对象删除通知
+// 如果是失败的情况，需要别的结构体
+// 不同的的操作，返回的结果也是不同的
+func (uc *ClientUseCase) notifyOperComplete(objPath, commandKey, commandName string, outputArgs map[string]string) {
+	notifyOperComplete := &api.Notify_OperComplete{
+		OperComplete: &api.Notify_OperationComplete{
+			ObjPath:     objPath,
+			CommandKey:  commandKey,
+			CommandName: commandName,
+			OperationResp: &api.Notify_OperationComplete_ReqOutputArgs{
+				ReqOutputArgs: &api.Notify_OperationComplete_OutputArgs{
+					OutputArgs: outputArgs,
+				},
+			},
+		},
+	}
+	uc.ListenerMgr.NotifyListeners(objPath, notifyOperComplete)
+}
+
+// notifyEvent 发送对象删除通知
+// 不同的event 返回的结果也是不同的
+func (uc *ClientUseCase) notifyEvent(objPath, eventName string, params map[string]string) {
+	event := &api.Notify_Event_{
+		Event: &api.Notify_Event{
+			ObjPath:   objPath,
+			EventName: eventName,
+			Params:    params,
+		},
+	}
+	uc.ListenerMgr.NotifyListeners(objPath, event)
 }

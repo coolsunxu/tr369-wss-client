@@ -91,6 +91,22 @@ func (uc *ClientUseCase) HandleSubscription(path string, subscriptionId string, 
 		}
 	case tr181Model.OperationComplete:
 		// 处理操作完成订阅
+		err := uc.ListenerMgr.AddListener(path, tr181Model.Listener{
+			SubscriptionId: subscriptionId,
+			Listener:       uc.HandleOperateComplete,
+		})
+		if err != nil {
+			return err
+		}
+	case tr181Model.Event:
+		// 处理事件订阅
+		err := uc.ListenerMgr.AddListener(path, tr181Model.Listener{
+			SubscriptionId: subscriptionId,
+			Listener:       uc.HandleEvent,
+		})
+		if err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unknown subscription type %s", subscriptionType)
 	}
@@ -119,6 +135,7 @@ func (uc *ClientUseCase) isSubscriptionInstancePath(path string) bool {
 }
 
 // extractSubscriptionParams 从参数设置中提取订阅参数
+// 校验 ReferenceList 是否符合 TR181 Path Name 规范
 func (uc *ClientUseCase) extractSubscriptionParams(paramSettings map[string]string) (*model.SubscriptionParams, error) {
 	if paramSettings == nil {
 		return nil, fmt.Errorf("paramSettings is nil")
@@ -141,7 +158,79 @@ func (uc *ClientUseCase) extractSubscriptionParams(paramSettings map[string]stri
 		return nil, fmt.Errorf("missing required parameter 'NotifType'")
 	}
 
+	// 校验 ReferenceList 是否符合 TR181 Path Name 规范
+	if err := uc.validateReferenceList(params.ReferenceList); err != nil {
+		return nil, fmt.Errorf("invalid ReferenceList: %w", err)
+	}
+
 	return params, nil
+}
+
+// validateReferenceList 校验 ReferenceList 是否符合 TR181 Path Name 规范
+func (uc *ClientUseCase) validateReferenceList(refList string) error {
+	// 使用 PathValidator 进行校验
+	validator := uc.getPathValidator()
+	return validator.ValidatePath(refList)
+}
+
+// pathValidator 缓存的路径校验器
+var pathValidatorInstance *pathValidatorWrapper
+
+// pathValidatorWrapper 路径校验器包装器
+type pathValidatorWrapper struct {
+	validator interface {
+		ValidatePath(path string) error
+	}
+}
+
+// getPathValidator 获取路径校验器实例
+func (uc *ClientUseCase) getPathValidator() interface {
+	ValidatePath(path string) error
+} {
+	if pathValidatorInstance == nil {
+		// 延迟初始化，避免循环依赖
+		pathValidatorInstance = &pathValidatorWrapper{
+			validator: &simplePathValidator{},
+		}
+	}
+	return pathValidatorInstance.validator
+}
+
+// simplePathValidator 简单路径校验器（避免循环依赖）
+type simplePathValidator struct{}
+
+// ValidatePath 校验路径是否符合 TR181 Path Name 规范
+func (v *simplePathValidator) ValidatePath(path string) error {
+	// 1. 检查空路径
+	if path == "" {
+		return model.NewPathValidationError(path, -1, model.ErrReasonEmpty)
+	}
+
+	// 2. 检查长度
+	if len(path) > model.MaxPathLength {
+		return model.NewPathValidationError(path, model.MaxPathLength, model.ErrReasonTooLong)
+	}
+
+	// 3. 检查前缀
+	if len(path) < len(model.PathPrefix) || path[:len(model.PathPrefix)] != model.PathPrefix {
+		return model.NewPathValidationError(path, 0, model.ErrReasonInvalidPrefix)
+	}
+
+	// 4. 检查非法字符（控制字符）
+	for i, r := range path {
+		if r < 0x20 && r != '\t' && r != '\n' && r != '\r' {
+			return model.NewPathValidationError(path, i, model.ErrReasonIllegalChar)
+		}
+	}
+
+	// 5. 检查连续点
+	for i := 0; i < len(path)-1; i++ {
+		if path[i] == '.' && path[i+1] == '.' {
+			return model.NewPathValidationError(path, i, model.ErrReasonConsecutiveDots)
+		}
+	}
+
+	return nil
 }
 
 // deleteAllSubscriptions 删除所有订阅

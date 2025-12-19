@@ -191,20 +191,10 @@ func (uc *ClientUseCase) HandleOperateRequest(inComingMsg *api.Msg) {
 		logger.Warnf("[USP] HandleOperateRequest received invalid message")
 		return
 	}
-
-	msgId := inComingMsg.Header.MsgId
 	logger.Infof("[USP] receive OPERATE request: %s", inComingMsg.String())
 
-	operate := inComingMsg.GetBody().GetRequest().GetOperate()
-	command := operate.GetCommand()
-
-	msg := utils.CreateOperateResponseMessage(msgId, command)
-	logger.Infof("[USP] send OPERATE response: %s", msg.String())
-
-	err := uc.HandleMTPMsgTransmit(msg)
-	if err != nil {
-		logger.Warnf("[USP] OPERATE error: msgId=%s, err=%v", msgId, err)
-	}
+	// 根据command名称决定调用operComplete还是event
+	uc.HandleCommand(inComingMsg.GetBody().GetRequest().GetOperate(), inComingMsg.Header.MsgId)
 }
 
 // HandleNotifyResp handles incoming NOTIFY_RESP messages
@@ -216,15 +206,4 @@ func (uc *ClientUseCase) HandleNotifyResp(inComingMsg *api.Msg) {
 	}
 
 	logger.Infof("[USP] receive NOTIFY_RESP: %s", inComingMsg.String())
-}
-
-// SendOperateCompleteNotify sends OPERATE_COMPLETE notification
-func (uc *ClientUseCase) SendOperateCompleteNotify(objPath string, commandName string, commandKey string, outputArgs map[string]string) {
-	msg := utils.CreateOperateCompleteMessage(objPath, commandName, commandKey, outputArgs)
-	logger.Infof("[USP] send OPERATE_COMPLETE notify: %s", msg.String())
-
-	err := uc.HandleMTPMsgTransmit(msg)
-	if err != nil {
-		logger.Warnf("[USP] OPERATE_COMPLETE notify error: path=%s, err=%v", objPath, err)
-	}
 }
